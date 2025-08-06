@@ -1,9 +1,17 @@
-
+# Ignore Python virtual environment
 .venv/
 
-
+# Ignore environment variables
 .env
 
-
+# Ignore Python cache
 __pycache__/
-*.py[cod]
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore macOS metadata (optional)
+.DS_Store
+
+# VS Code settings (optional)
+.vscode/
