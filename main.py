@@ -105,5 +105,4 @@ def main():
 
     logging.info("✅ Job complete.")
 
-if __name__ == "__main__":
-    main()
+
