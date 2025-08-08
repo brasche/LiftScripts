@@ -3,6 +3,9 @@ import os
 import psycopg2
 import logging
 from datetime import datetime
+from flask import Flask, request
+
+app = Flask(__name__)
 
 # Configure logging for Cloud Run
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -15,15 +18,15 @@ queues = [
     "Retention_ALV", "Sales", "Social_Live_Transfer", "ThriveLoan", "TriCountyLoans"
 ]
 
-# Read environment variables (set in Cloud Run environment config)
-authtoken = os.getenv("Token")
-db_config = {
-    'host': os.getenv("DB_HOST"),
-    'port': os.getenv("DB_PORT"),
-    'dbname': os.getenv("DB_NAME"),
-    'user': os.getenv("DB_USER"),
-    'password': os.getenv("DB_PASS")
-}
+@app.route("/", methods=["POST"])
+def run_job():
+    try:
+        main()
+        return "✅ Job executed successfully", 200
+    except Exception as e:
+        logging.error(f"❌ Unhandled exception: {e}")
+        return f"❌ Error during execution: {str(e)}", 500
+
 
 def get_queue_monitor_reports(token, queue_name):
     url = f"https://api.1bluerock.com/v2/queue/{queue_name}/calls/hour/completed"
@@ -32,9 +35,10 @@ def get_queue_monitor_reports(token, queue_name):
     if response.status_code == 200:
         return response.json().get("response", {}).get("calls", [])
     else:
-        raise Exception(f"Error fetching reports: {response.status_code} - {response.text}")
+        raise Exception(f"Error fetching reports for {queue_name}: {response.status_code} - {response.text}")
 
-def insert_calls_to_db(calls):
+
+def insert_calls_to_db(calls, db_config):
     try:
         conn = psycopg2.connect(**db_config)
         cur = conn.cursor()
@@ -84,7 +88,18 @@ def insert_calls_to_db(calls):
     conn.close()
     logging.info(f"✅ Inserted {len(calls)} records into 'bluerock'.")
 
+
 def main():
+    # Read environment variables (inside function to avoid caching old values)
+    authtoken = os.getenv("Token")
+    db_config = {
+        'host': os.getenv("DB_HOST"),
+        'port': os.getenv("DB_PORT"),
+        'dbname': os.getenv("DB_NAME"),
+        'user': os.getenv("DB_USER"),
+        'password': os.getenv("DB_PASS")
+    }
+
     if not authtoken:
         logging.error("❌ Missing API token. Set 'Token' in environment variables.")
         return
@@ -97,12 +112,10 @@ def main():
             calls = get_queue_monitor_reports(authtoken, queue)
             if calls:
                 logging.info(f"📊 Found {len(calls)} calls for queue: {queue}")
-                insert_calls_to_db(calls)
+                insert_calls_to_db(calls, db_config)
             else:
                 logging.info(f"⛔ No calls found for queue: {queue}")
         except Exception as e:
             logging.error(f"❌ Error processing queue {queue}: {e}")
 
     logging.info("✅ Job complete.")
-
-
